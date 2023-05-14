@@ -11,6 +11,7 @@ from pyotp import TOTP
 from kiteconnect import KiteConnect
 
 # Selenium
+import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -30,7 +31,7 @@ class LoginCredentials:
 
     def __init__(self):
         self.date = ut.today
-        self.credentials = self.gen_credentials()
+        self.credentials = self.__gen_credentials()
         self.api_key = self.credentials.api_key
         self.api_secret = self.credentials.api_secret
         self.user_id = self.credentials.kite_username
@@ -38,10 +39,10 @@ class LoginCredentials:
         self.totp = TOTP(self.credentials.totp_secret).now()
 
         # Change kwargs "auto=True to auto=False" for manual "access-token" generation
-        self.credentials.access_token = self.gen_access_token()  # (auto=False)
+        self.credentials.access_token = self.__gen_access_token()  # (auto=False)
 
     @staticmethod
-    def gen_credentials():
+    def __gen_credentials():
         """ to create api_key, api_secret, totp_secret """
         log_file = None
         file = 'login_credentials.json'
@@ -84,7 +85,7 @@ class LoginCredentials:
 
         return models.CredentialsModel(**log_file)
 
-    def gen_access_token(self, auto=True):
+    def __gen_access_token(self, auto=True):
         """ to create access token """
 
         request_token = None

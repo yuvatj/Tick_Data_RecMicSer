@@ -2,178 +2,173 @@
 import os
 import time
 import logging
-import pandas as pd
 from datetime import datetime
-from kiteconnect import KiteTicker, KiteConnect
-from dataclasses import dataclass, asdict
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import Column, Integer, DateTime, Float, Table
+from kiteconnect import KiteTicker
+
 # local library import
-import models
 import tables
-from utility import Utility
 from kite_login import LoginCredentials
-from database import Base, TokensSessionLocal, NseTickSessionLocal, nse_tick_engine, nfo_tick_engine
+from sqllite_local import Sqlite3Server
+from database import TokensSessionLocal
 
 # Parameters
-ut = Utility()
-log = LoginCredentials()
-credentials = log.credentials
+log = LoginCredentials().credentials
+today = datetime.today().date()
 logging.basicConfig(level=logging.DEBUG)
-today = ut.today
 
 
 class TickData:
 
+    def __init__(self):
+        self.today = today
+        self.nse_tokens = self.__get_tokens(nse=True)
+        self.nfo_tokens = self.__get_tokens(nse=False)
+
+        self.nse_column = self.__get_column(nse=True)
+        self.nfo_column = self.__get_column(nse=False)
+
+        self.nse_path = "NSE_ticks"
+        self.nfo_path = "NFO_ticks"
+
     @staticmethod
-    def tcp_connection(tokens: list, function: object, end_time: str):
+    def __get_column(nse=False):
 
-        # Initialise
-        kws = KiteTicker(credentials.api_key, credentials.access_token)
-        end_time = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+        column_dict = {'time_stamp': ('datetime primary key', 'exchange_timestamp'),
+                       'price': ('real(15,5)', 'last_price'),
+                       'average_price': ('real(15,5)', 'average_traded_price'),
+                       'total_buy_qty': ('integer', 'total_buy_quantity'),
+                       'total_sell_qty': ('integer', 'total_sell_quantity'),
+                       'traded_volume': ('integer', 'volume_traded')}
 
+        if not nse:
+            nfo_column_dict = column_dict
+            nfo_column_dict.update({'open_interest': ('integer', 'oi')})
+
+            return nfo_column_dict
+
+        return column_dict
+
+    def __get_tokens(self, nse: bool) -> list:
+        """Fetch token numbers for instruments NSE, NFO.
+
+        Args:
+            nse: If True, fetch token numbers for NSE instruments.
+
+        Returns:
+            A list of token numbers.
+        """
+
+        # Get a database session.
+        db = TokensSessionLocal()
+
+        # Get the token table name.
+        token_table_name = tables.NseTokenTable if nse else tables.NfoTokenTable
+
+        # Query the database for token numbers.
+        tokens_data = db.query(token_table_name).filter(token_table_name.last_update == self.today)
+
+        # Convert the query results to a list of token numbers.
+        tokens = [item.instrument_token for item in tokens_data]
+
+        # Return the list of token numbers.
+        return tokens
+
+    @staticmethod
+    def tcp_connection(_tokens: list, function: object, end: str):
+
+        # Create a KiteTicker object with the api_key and access_token.
+        kws = KiteTicker(log.api_key, log.access_token)
+
+        # Convert the end date time string to a datetime object.
+        end_time = datetime.strptime(end, "%Y-%m-%d %H:%M:%S")
+
+        # Define a callback function to be called when the websocket receives a tick message.
         def on_ticks(ws, ticks):
-            # Callback to receive ticks.
-            # insert_ticks(ticks)
+            # Call the function passed in to the tcp_connection() method with the tick data.
             function(ticks)
-            # print(ticks)
 
+        # Define a callback function to be called when the websocket connects to the Kite Connect server.
         def on_connect(ws, response):
-            # Callback on successful connect.
-            # Subscribe to a list of instrument_tokens (RELIANCE and ACC here).
-            ws.subscribe(tokens)
-            ws.set_mode(ws.MODE_FULL, tokens)
+            # Subscribe to the list of instruments passed in to the tcp_connection() method.
+            ws.subscribe(_tokens)
 
-        # Assign the callbacks.
+            # Set the mode for the list of instruments to `full`.
+            ws.set_mode(ws.MODE_FULL, _tokens)
+
+        # Define a function to handle errors that occur when connecting to the websocket
+        # or when subscribing to instruments.
+        def handle_error(ws, error):
+            # Log the error message.
+            logging.error(error)
+
+            # Close the websocket connection.
+            ws.close()
+
+        # Define a function to log the time when the websocket connects and disconnects,
+        # as well as the list of instruments that are subscribed to.
+        def log_connection_info(ws, event):
+            # Log the time when the websocket connects or disconnects.
+            logging.info(f"{event} at {datetime.now()}")
+
+            # If the event is `connect`, log the list of instruments that are subscribed to.
+            if event == "connect":
+                logging.info(f"Subscribed to {_tokens}")
+
+        # Assign the callbacks to the corresponding methods on the KiteTicker class.
         kws.on_ticks = on_ticks
         kws.on_connect = on_connect
+        kws.on_error = handle_error
+        kws.on_log = log_connection_info
 
-        # Infinite loop on the main thread. Nothing after this will run.
-        # You have to use the pre-defined callbacks to manage subscriptions.
+        # Start the websocket connection and subscribe to the list of instruments.
         kws.connect(threaded=True)
         print('recording')
 
+        # Infinite loop on the main thread. Nothing after this will run.
         while True:
-            # Get the current time
+            # Get the current time.
             current_time = datetime.now().time().replace(microsecond=0)
+
+            # If the current time is greater than or equal to the end time,
+            # close the websocket connection and break out of the loop.
             if current_time >= end_time.time():
                 kws.close()
                 break
+
+            # Otherwise, sleep for the difference between the current time and the end time.
             else:
                 time_diff = (end_time - datetime.today()).seconds
                 time.sleep(time_diff + 1)
+
+        # Print a message to indicate that the program has stopped.
         print(f"program stopped at {current_time}")
 
-    @classmethod
-    def record(cls, segment: str, token_list: list, column_dict: dict):
+    def record(self, exchange: str, token_list: list, column_dict: dict):
 
         # Initialise some parameters
-        selection = segment.upper()
-        end_time_str = f"{today} 15:31:00"
-        end_time = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
-        path = file_manger.tick_data_folder + f"NSE/{today}.db"
+        selection = exchange.upper()
+        end_time_str = f"{self.today} 15:31:00"
 
-        if selection == "NFO":
-            path = file_manger.tick_data_folder + f"NFO/{today}.db"
+        folder = self.nse_path if selection == "NSE" else self.nfo_path
+        path = folder + f"/{today}.db"
 
-        # initiate sql server
+        os.makedirs(folder, exist_ok=True)
+
+        # Initiate the SQL server.
         server = Sqlite3Server(path, column_dict)
 
-        # fetch tokens from symbols
+        # Fetch the tokens from the list of symbols.
         tokens = token_list
 
-        # create table
+        # Create the tables in the SQLite database.
         server.create_tables(tokens)
 
-        # establish TCP connection with api
-        cls.tcp_connection(tokens, server.insert_ticks, end_time)
+        # Establish a TCP connection with the API.
+        self.tcp_connection(tokens, server.insert_ticks, end_time_str)
 
 
 if __name__ == '__main__':
 
-    db = TokensSessionLocal()
-
-    tokens_data = db.query(tables.NseTokenTable).filter(tables.NseTokenTable.last_update == today)
-    tokens = [token.instrument_token for token in tokens_data]
-
-
-    def add_nse_tick(model):
-        """ Function to add a token data to the database"""
-
-        # Connect to the database
-        db = NseTickSessionLocal()
-
-        # Create table name
-        table_name = f"token_{model.instrument_token}"
-
-        # Convert the model to a dictionary
-        my_dict = asdict(model)
-        del my_dict['instrument_token']
-        model_dict = my_dict
-
-        class NseTable(Base):
-            __tablename__ = table_name
-
-            time_stamp = Column(DateTime, primary_key=True)
-            price = Column(Float)
-            average_price = Column(Float)
-            total_buy_qty = Column(Integer)
-            total_sell_qty = Column(Integer)
-            traded_volume = Column(Integer)
-
-        # Define the table object with `extend_existing=True`
-        table = Table(table_name, Base.metadata, extend_existing=True, autoload=True)
-
-        # Create a new row with the values from the model
-        row = table.insert().values(**model_dict)
-
-        try:
-            # Add the new row to the database
-            db.execute(row)
-            db.commit()
-
-        except IntegrityError as e:
-            # If there is an IntegrityError, rollback the transaction and handle the duplicate entry error
-            db.rollback()
-            if 'Duplicate entry' in str(e):
-                # If the model's exchange is NFO, update the existing NfoTable object
-                existing_token = db.query(tables.NseInstrumentTable) \
-                    .filter(NseTable.time_stamp == model.time_stamp).first()
-
-                # Update the values of the existing token
-                existing_token.price = model.price
-                existing_token.average_price = model.average_price
-                existing_token.total_buy_qty = model.total_buy_qty
-                existing_token.total_sell_qty = model.total_sell_qty
-                existing_token.traded_volume = model.traded_volume
-
-                # Add the updated token to the database
-                db.add(existing_token)
-                db.commit()
-
-        finally:
-            # Close the database connection
-            db.close()
-
-
-    def demo(ticks):
-        for tick in ticks:
-            stock = models.NseInstrumentModel(
-                instrument_token=tick['instrument_token'],
-                price=tick['last_price'],
-                traded_volume=tick['volume_traded'],
-                total_buy_qty=tick['total_buy_quantity'],
-                total_sell_qty=tick['total_sell_quantity'],
-                time_stamp=tick['exchange_timestamp'],
-                average_price=tick['average_traded_price']
-            )
-            add_nse_tick(stock)
-
-
-    TickData.tcp_connection(tokens, demo, '2023-05-10 11:21:00')
-
-
-
-
-
+    tick = TickData()
+    tick.record('NFO', tick.nfo_tokens, tick.nfo_column)
 
