@@ -1,5 +1,4 @@
 # Python Standard Library
-import multiprocessing
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +22,7 @@ ut = Utility()
 tick = TickData()
 activeSymbols = ActiveSymbols()
 today = datetime.today().date()
+token_db = TokensSessionLocal()
 
 
 def add_token(model: models.NfoTokenModel | models.NseTokenModel):
@@ -86,53 +86,75 @@ def add_token(model: models.NfoTokenModel | models.NseTokenModel):
         db.close()
 
 
-def create_table_for_nfo_instrument(token):
-    # Check if the table already exists
-    with nfo_tick_engine.connect() as conn:
-        inspector = Inspector.from_engine(conn)
-        if inspector.has_table(f"token_{token}"):
-            # print(f'Table for token {token} already exists')
-            return
+def get_tokens(nse: bool) -> list:
+    """Fetch token numbers for instruments NSE, NFO.
 
-    # Define the table for the token
-    class NfoInstrumentTable(Base):
-        __tablename__ = f"token_{token}"
+    Args:
+        nse: If True, fetch token numbers for NSE instruments.
 
-        time_stamp = Column(DateTime, primary_key=True)
-        price = Column(Float)
-        average_price = Column(Float)
-        total_buy_qty = Column(Integer)
-        total_sell_qty = Column(Integer)
-        traded_volume = Column(Integer)
-        open_interest = Column(Integer)
+    Returns:
+        A list of token numbers updated today.
+    """
 
-    # Create the table in the database
-    Base.metadata.create_all(nfo_tick_engine, tables=[NfoInstrumentTable.__table__])
-    print(f'Table for token {token} created')
+    # Get the token table name.
+    token_table_name = tables.NseTokenTable if nse else tables.NfoTokenTable
+
+    # Query the database for token numbers.
+    tokens_data = token_db.query(token_table_name).filter(token_table_name.last_update == today)
+
+    # Convert the query results to a list of token numbers.
+    result = [item.instrument_token for item in tokens_data]
+
+    # Return the list of token numbers.
+    return result
 
 
-def create_table_for_nse_instrument(token):
-    # Check if the table already exists
-    with nse_tick_engine.connect() as conn:
-        inspector = Inspector.from_engine(conn)
-        if inspector.has_table(f"token_{token}"):
-            # print(f'Table for token {token} already exists')
-            return
+def create_table_for_instruments(nse: bool = False):
 
-    # Define the table for the token
-    class NseInstrumentTable(Base):
-        __tablename__ = f"token_{token}"
+    # Parameters
+    tokens = get_tokens(nse=True) if nse else get_tokens(nse=False)
+    engine = nse_tick_engine if nse else nfo_tick_engine
 
-        time_stamp = Column(DateTime, primary_key=True)
-        price = Column(Float)
-        average_price = Column(Float)
-        total_buy_qty = Column(Integer)
-        total_sell_qty = Column(Integer)
-        traded_volume = Column(Integer)
+    for token in tokens:
+        # Check if the table already exists
+        with engine.connect() as conn:
+            inspector = Inspector.from_engine(conn)
+            if inspector.has_table(f"token_{token}"):
+                # print(f'Table for token {token} already exists')
+                return
 
-    # Create the table in the database
-    Base.metadata.create_all(nse_tick_engine, tables=[NseInstrumentTable.__table__])
-    print(f'Table for token {token} created')
+        if nse:
+            # Define the table for the NSE token
+            class NseInstrumentTable(Base):
+                __tablename__ = f"token_{token}"
+
+                time_stamp = Column(DateTime, primary_key=True)
+                price = Column(Float)
+                average_price = Column(Float)
+                total_buy_qty = Column(Integer)
+                total_sell_qty = Column(Integer)
+                traded_volume = Column(Integer)
+
+            # Create the table in the database
+            Base.metadata.create_all(engine, tables=[NseInstrumentTable.__table__])
+            print(f'Table for token {token} created')
+
+        else:
+            # Define the table for the NFO token
+            class NfoInstrumentTable(Base):
+                __tablename__ = f"token_{token}"
+
+                time_stamp = Column(DateTime, primary_key=True)
+                price = Column(Float)
+                average_price = Column(Float)
+                total_buy_qty = Column(Integer)
+                total_sell_qty = Column(Integer)
+                traded_volume = Column(Integer)
+                open_interest = Column(Integer)
+
+            # Create the table in the database
+            Base.metadata.create_all(engine, tables=[NfoInstrumentTable.__table__])
+            print(f'Table for token {token} created')
 
 
 decision = False
@@ -155,7 +177,7 @@ while decision is False:
     options_tokens = activeSymbols.get_symbol_data(options_model)
 
     # Merge all tokens into a single list
-    tokens = nse_tokens + futures_tokens + options_tokens
+    tokens_combined = nse_tokens + futures_tokens + options_tokens
 
     # Print the number of symbols for Futures, Options, and Stocks
     print(f"Futures:{len(futures_tokens)}\nOptions:{len(options_tokens)}\nStocks:{len(nse_tokens)}")
@@ -164,22 +186,12 @@ while decision is False:
 
     if decision:
         # add the tokens to the database
-        for token in tokens:
-            add_token(token)
+        for token_item in tokens_combined:
+            add_token(token_item)
 
+# Create missing tables of NSE
+create_table_for_instruments(nse=True)
 
-# Create tables for newly generated tokens
-db = TokensSessionLocal()
-tokens_data = db.query(tables.NfoTokenTable).filter(tables.NfoTokenTable.last_update == today)
-nfo_tokens = [token.instrument_token for token in tokens_data]
-for token in nfo_tokens:
-    create_table_for_nfo_instrument(token)
-
-
-# Create tables for newly generated tokens
-db = TokensSessionLocal()
-tokens_data = db.query(tables.NseTokenTable).filter(tables.NseTokenTable.last_update == today)
-nse_tokens = [token.instrument_token for token in tokens_data]
-for token in nse_tokens:
-    create_table_for_nse_instrument(token)
+# Create missing tables of NFO
+create_table_for_instruments(nse=False)
 
