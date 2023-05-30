@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Date, DateTime, Float
-from database import Base, tokens_engine
+from database import Base, engine_tokens
 from datetime import datetime
 
 
@@ -31,5 +31,15 @@ class NseTokenTable(Base):
     last_update = Column(Date)
 
 
+class IndexTokenTable(Base):
+    __tablename__ = 'index_tokens'
+
+    instrument_token = Column(Integer, primary_key=True, index=True)
+    tradingsymbol = Column(String(50))
+    name = Column(String(50))
+    last_update = Column(Date)
+
+
 # create tables in respective databases
-Base.metadata.create_all(bind=tokens_engine, tables=[NseTokenTable.__table__, NseTokenTable.__table__])
+Base.metadata.create_all(bind=engine_tokens, tables=[NseTokenTable.__table__, NseTokenTable.__table__,
+                                                     IndexTokenTable.__table__])

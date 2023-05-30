@@ -17,8 +17,8 @@ from kite_login import LoginCredentials
 # pd.set_option('display.width', None)
 
 # Parameters
-kite_log = LoginCredentials()
-log = kite_log.credentials
+user = LoginCredentials()
+log = user.credentials
 ut = Utility()
 
 
@@ -44,7 +44,7 @@ class ActiveSymbols:
                     dump = kite.instruments("NSE")
                     data_frame = pd.DataFrame(dump)
                     data_frame['count'] = [len(x) for x in data_frame['name']]
-                    data_frame = data_frame[data_frame['segment'] == 'NSE']
+                    # data_frame = data_frame[data_frame['segment'] == 'NSE']
                     data_frame = data_frame[data_frame['count'] > 0]
                     data_frame = data_frame[['instrument_token', 'tradingsymbol', 'name', 'lot_size']]
 
@@ -131,7 +131,7 @@ class ActiveSymbols:
                 _query = f"segment == '{segment}' and expiry == '{expiry}'"
                 return _query
 
-            elif exchange == 'NSE':
+            elif exchange != 'NFO':
                 _query = f"tradingsymbol.isin({list(name)})" if type(name) is tuple else f"tradingsymbol == '{name}'"
                 return _query
 
@@ -179,6 +179,12 @@ class ActiveSymbols:
             tokens = return_data_frame.to_dict('index')
 
             data = [models.NseTokenModel(**tokens[item]) for item in tokens]
+            return data
+
+        elif exchange == 'INDEX':
+            tokens = return_data_frame.to_dict('index')
+
+            data = [models.IndexTokenModel(**tokens[item]) for item in tokens]
             return data
 
         else:

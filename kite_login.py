@@ -39,7 +39,7 @@ class LoginCredentials:
         self.totp = TOTP(self.credentials.totp_secret).now()
 
         # Change kwargs "auto=True to auto=False" for manual "access-token" generation
-        self.credentials.access_token = self.__gen_access_token()  # (auto=False)
+        self.credentials.access_token = self.__gen_access_token(auto=True)  # (auto=False)
 
     @staticmethod
     def __gen_credentials():
@@ -112,18 +112,18 @@ class LoginCredentials:
             driver.get(url)
             time.sleep(4)
             # Enter user-name and password
-            username = driver.find_element(By.XPATH, value='//*[@id="userid"]')
-            password = driver.find_element(By.XPATH, value='//*[@id="password"]')
+            username = driver.find_element(By.ID, value='userid')
+            password = driver.find_element(By.ID, value='password')
             username.send_keys(self.user_id)
             password.send_keys(self.password)
-            driver.find_element(By.XPATH, value='//*[@id="container"]/div/div/div/form/div[4]/button').click()
-            time.sleep(2)
+            driver.find_element(By.CLASS_NAME, value='actions').click()
+            time.sleep(3)
             # Generate 'T-otp' and enter in the form
             otp = driver.find_element(By.XPATH, value='//*[@id="container"]/div[2]/div/div/form/div[1]/input')
             totp = self.totp
             otp.send_keys(totp)
-            driver.find_element(By.XPATH, value='//*[@id="container"]/div[2]/div/div/form/div[2]/button').click()
-            time.sleep(2)
+            driver.find_element(By.CLASS_NAME, value='actions').click()
+            time.sleep(3)
             # Extract request token from url
             request_token = driver.current_url.split('request_token=')[1][:32]
             driver.quit()

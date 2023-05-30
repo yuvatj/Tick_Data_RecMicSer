@@ -7,9 +7,10 @@ from kiteconnect import KiteTicker
 
 # local library import
 import tables
+import models
 from kite_login import LoginCredentials
 from sqllite_local import Sqlite3Server
-from database import TokensSessionLocal
+from database import SessionLocalTokens
 
 # Parameters
 log = LoginCredentials().credentials
@@ -59,7 +60,7 @@ class TickData:
         """
 
         # Get a database session.
-        db = TokensSessionLocal()
+        db = SessionLocalTokens()
 
         # Get the token table name.
         token_table_name = tables.NseTokenTable if nse else tables.NfoTokenTable
@@ -170,5 +171,7 @@ class TickData:
 if __name__ == '__main__':
 
     tick = TickData()
-    tick.record('NFO', tick.nfo_tokens, tick.nfo_column)
+    tokens = [256265, 257801, 260105]
+    date = "2023-05-29 10:37:00"
+    tick.tcp_connection(tokens, print, date)
 

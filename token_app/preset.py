@@ -56,4 +56,11 @@ def predefined_requests(selection: str):
             columns=('tradingsymbol', 'instrument_token', 'name', 'lot_size')
         )
 
+    elif selection == 'INDEX':
+        model = models.SymbolsModel(
+            name=('NIFTY 50', 'NIFTY BANK', 'NIFTY FIN SERVICE'),
+            exchange='INDEX',
+            columns=('tradingsymbol', 'instrument_token', 'name')
+        )
+
     return model

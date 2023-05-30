@@ -9,26 +9,32 @@ from kite_login import LoginCredentials
 
 # Parameters
 ut = utility.Utility()
-kite_log = LoginCredentials()
-log = kite_log.credentials
+login = LoginCredentials()
+log = login.credentials
 
 
 # Configuration for the tokens database
-TOKENS_DATABASE_URL = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/tokens"
-tokens_engine = create_engine(TOKENS_DATABASE_URL)
-TokensSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=tokens_engine)
+DATABASE_URL_TOKENS = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/tokens"
+engine_tokens = create_engine(DATABASE_URL_TOKENS)
+SessionLocalTokens = sessionmaker(autocommit=False, autoflush=False, bind=engine_tokens)
 
 
 # Configuration for the NSE database
-NSE_DATABASE_URL = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/nse_tick_data"
-nse_tick_engine = create_engine(NSE_DATABASE_URL)
-NseTickSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=nse_tick_engine)
+DATABASE_URL_NSE = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/candle_data_nse"
+engine_candle_data_nse = create_engine(DATABASE_URL_NSE)
+SessionLocalCandleDataNse = sessionmaker(autocommit=False, autoflush=False, bind=engine_candle_data_nse)
 
 
 # Configuration for the NFO database
-NFO_DATABASE_URL = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/nfo_tick_data"
-nfo_tick_engine = create_engine(NFO_DATABASE_URL)
-NfoTickSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=nfo_tick_engine)
+DATABASE_URL_NFO = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/candle_data_nfo"
+engine_candle_data_nfo = create_engine(DATABASE_URL_NFO)
+SessionLocalCandleDataNfo = sessionmaker(autocommit=False, autoflush=False, bind=engine_candle_data_nfo)
+
+
+# Configuration for the Index database
+DATABASE_URL_INDEX = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/candle_data_index"
+engine_candle_data_index = create_engine(DATABASE_URL_INDEX)
+SessionLocalCandleDataIndex = sessionmaker(autocommit=False, autoflush=False, bind=engine_candle_data_index)
 
 
 # Configuration for the Base

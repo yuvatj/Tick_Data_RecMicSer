@@ -64,12 +64,10 @@ class NseTokenModel:
 
 
 @dataclass
-class NseInstrumentModel:
-    instrument_token: int
-    price: float
-    average_price: float
-    traded_volume: int
-    total_buy_qty: int
-    total_sell_qty: int
-    time_stamp: datetime
+class IndexTokenModel:
+    instrument_token: int = field(default=None)
+    tradingsymbol: str = field(default=None)
+    name: str = field(default=None)
+    last_update: date = field(default=today)
+    exchange: str = field(default='INDEX')
 
