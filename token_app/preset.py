@@ -1,5 +1,8 @@
+import json
+
 
 # Local Library imports
+import tables
 import models
 from utility import Utility
 from active_symbols import ActiveSymbols
@@ -10,8 +13,8 @@ ut = Utility()
 activeSymbols = ActiveSymbols()
 
 # Banknifty is used to generate the expiry dates.
-current_month_expiry = activeSymbols.get_expiry_dates('BANKNIFTY')[0]
-current_week_expiry = activeSymbols.get_expiry_dates('BANKNIFTY', options=True)[0]
+bn_current_month_expiry = activeSymbols.get_expiry_dates('BANKNIFTY')[0]
+bn_current_week_expiry = activeSymbols.get_expiry_dates('BANKNIFTY', options=True)[0]
 
 
 def predefined_requests(selection: str):
@@ -37,7 +40,7 @@ def predefined_requests(selection: str):
             strike_range_per_side=15,
             columns=('tradingsymbol', 'instrument_token', 'lot_size', 'name', 'expiry',
                      'strike', 'segment', 'instrument_type'),
-            expiry=current_week_expiry
+            expiry=bn_current_week_expiry
         )
 
     elif selection == 'stocks_NFO':
@@ -46,7 +49,7 @@ def predefined_requests(selection: str):
             exchange='NFO',
             segment='NFO-FUT',
             columns='name',
-            expiry=current_month_expiry
+            expiry=bn_current_month_expiry
         )
 
     elif selection == 'token_NSE_ALL':
@@ -64,3 +67,5 @@ def predefined_requests(selection: str):
         )
 
     return model
+
+

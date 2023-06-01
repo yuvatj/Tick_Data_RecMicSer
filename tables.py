@@ -40,6 +40,18 @@ class IndexTokenTable(Base):
     last_update = Column(Date)
 
 
+class IndexStocksTokenTable(Base):
+    __tablename__ = 'index_stocks_tokens'
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    instrument_token = Column(Integer)
+    tradingsymbol = Column(String(50))
+    name = Column(String(50))
+    index = Column(String(50))
+    weightage = Column(Float)
+    last_update = Column(Date)
+
+
 # create tables in respective databases
 Base.metadata.create_all(bind=engine_tokens, tables=[NseTokenTable.__table__, NseTokenTable.__table__,
-                                                     IndexTokenTable.__table__])
+                                                     IndexTokenTable.__table__, IndexStocksTokenTable.__table__])

@@ -1,4 +1,5 @@
 # Python Standard Library
+import json
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
@@ -240,49 +241,101 @@ def create_table_for_instruments(exchange: str):
         print(f'Table for token {table.name} created')
 
 
-decision = False # keep it False
-while decision is False:
+def get_index_stocks():
+    index_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+    stock_list = []
 
-    # Create a model to fetch data for NSE symbols
-    nse_model = predefined_requests("token_NSE_ALL")
-    # Add list of NSE stocks to name
-    nse_stocks = tuple(activeSymbols.get_symbol_data(predefined_requests("stocks_NFO")))
-    nse_model.name = nse_stocks
-    nse_tokens = activeSymbols.get_symbol_data(nse_model)
+    for item in index_list:
+        try:
+            with open(f"{item}.json", "r") as json_file:
+                data = json.load(json_file)
+                symbol_count = len(data)
 
-    # Fetch data for Futures NIFTY and BANKNIFTY
-    futures_model = predefined_requests('futures_NI_BN')
-    fut_tokens = activeSymbols.get_symbol_data(futures_model)
+                # Create a model to fetch data for NSE symbols
+                nse_model = predefined_requests("token_NSE_ALL")
+                nse_model.name = tuple(data.keys())
+                nse_tokens = activeSymbols.get_symbol_data(nse_model)
+                token = [item.tradingsymbol for item in nse_tokens]
 
-    # Fetch data for Options for BANKNIFTY
-    options_model = predefined_requests('options_BN')
-    # Take input for BANKNIFTY spot pre-open price
-    options_model.strike = int(input("Enter BANKNIFTY spot pre-open price example: 44_200: "))
-    banknifty_opt_tokens = activeSymbols.get_symbol_data(options_model)
+                if len(token) == symbol_count:
+                    # Append the keys to stock_list
+                    stock_list.extend(data.keys())
+                else:
+                    # Raise an exception if the number of symbols fetched does not match the expected count
 
-    # Fetch data for INDEX symbols
-    symbol_model = predefined_requests("INDEX")
-    index_tokens = activeSymbols.get_symbol_data(symbol_model)
+                    # Convert the lists to sets
+                    set1 = set(token)
+                    set2 = set(data.keys())
 
-    # Merge all tokens into a single list
-    tokens_combined = nse_tokens + fut_tokens + banknifty_opt_tokens + index_tokens
+                    # Get the items that are present in set1 but not in set2
+                    unique_items = set2 - set1
 
-    # Print the number of symbols for Futures, Options, and Stocks
-    print(f"Futures:{len(fut_tokens)}\nOptions:{len(banknifty_opt_tokens)}\n"
-          f"Stocks:{len(nse_tokens)}\nIndex:{len(index_tokens)}")
+                    # Convert the result back to a list
+                    result = list(unique_items)
+                    raise NameError(f"{item}.json Stocks {result} do not match")
 
-    decision = True if input("Press 'Y' to continue or 'N' to redo: ").upper() == 'Y' else False
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found at the {item}.json location")
 
-    if decision:
-        # add the tokens to the database
-        for token_item in tokens_combined:
-            add_token(token_item)
+    # Get the unique stocks by converting the list to a set and then back to a list
+    unique_stocks = list(set(stock_list))
+    return unique_stocks
 
-# Create missing tables of NSE
-create_table_for_instruments(exchange='NSE')
 
-# Create missing tables of NFO
-create_table_for_instruments(exchange='NFO')
+def preprocessing():
 
-# Create missing tables of INDEX
-create_table_for_instruments(exchange='INDEX')
+    decision = False # keep it False
+    while decision is False:
+
+        # Create a model to fetch data for NSE symbols
+        nse_model = predefined_requests("token_NSE_ALL")
+        # Add list of NSE stocks to name
+        nse_stocks = tuple(activeSymbols.get_symbol_data(predefined_requests("stocks_NFO")))
+        index_stocks = tuple(get_index_stocks())
+
+        combined_stocks = nse_stocks + index_stocks
+        unique_stocks = tuple(set(combined_stocks))
+
+        nse_model.name = unique_stocks
+        nse_tokens = activeSymbols.get_symbol_data(nse_model)
+
+        # Fetch data for Futures NIFTY and BANKNIFTY
+        futures_model = predefined_requests('futures_NI_BN')
+        fut_tokens = activeSymbols.get_symbol_data(futures_model)
+
+        # Fetch data for Options for BANKNIFTY
+        options_model = predefined_requests('options_BN')
+        # Take input for BANKNIFTY spot pre-open price
+        options_model.strike = int(input("Enter BANKNIFTY spot pre-open price example: 44_200: "))
+        banknifty_opt_tokens = activeSymbols.get_symbol_data(options_model)
+
+        # Fetch data for INDEX symbols
+        symbol_model = predefined_requests("INDEX")
+        index_tokens = activeSymbols.get_symbol_data(symbol_model)
+
+        # Merge all tokens into a single list
+        tokens_combined = nse_tokens + fut_tokens + banknifty_opt_tokens + index_tokens
+
+        # Print the number of symbols for Futures, Options, and Stocks
+        print(f"Futures:{len(fut_tokens)}\nOptions:{len(banknifty_opt_tokens)}\n"
+              f"Stocks:{len(nse_tokens)}\nIndex:{len(index_tokens)}")
+
+        decision = True if input("Press 'Y' to continue or 'N' to redo: ").upper() == 'Y' else False
+
+        if decision:
+            # add the tokens to the database
+            for token_item in tokens_combined:
+                add_token(token_item)
+
+    # Create missing tables of NSE
+    create_table_for_instruments(exchange='NSE')
+
+    # Create missing tables of NFO
+    create_table_for_instruments(exchange='NFO')
+
+    # Create missing tables of INDEX
+    create_table_for_instruments(exchange='INDEX')
+
+
+if __name__ == '__main__':
+    preprocessing()
