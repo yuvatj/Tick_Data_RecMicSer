@@ -7,7 +7,6 @@ from kiteconnect import KiteTicker
 
 # local library import
 import tables
-import models
 from kite_login import LoginCredentials
 from sqllite_local import Sqlite3Server
 from database import SessionLocalTokens
@@ -22,60 +21,86 @@ class TickData:
 
     def __init__(self):
         self.today = today
-        self.nse_tokens = self.__get_tokens(nse=True)
-        self.nfo_tokens = self.__get_tokens(nse=False)
+        self.nse_tokens = self.__get_tokens('NSE')
+        self.nfo_tokens = self.__get_tokens('NFO')
+        self.index_tokens = self.__get_tokens('INDEX')
 
-        self.nse_column = self.__get_column(nse=True)
-        self.nfo_column = self.__get_column(nse=False)
+        self.nse_column = self.__get_column('NSE')
+        self.nfo_column = self.__get_column('NFO')
+        self.index_column = self.__get_column('INDEX')
 
         self.nse_path = "NSE_ticks"
         self.nfo_path = "NFO_ticks"
+        self.index_path = "INDEX_ticks"
 
     @staticmethod
-    def __get_column(nse=False):
+    def __get_column(exchange: str):
 
-        column_dict = {'time_stamp': ('datetime primary key', 'exchange_timestamp'),
-                       'price': ('real(15,5)', 'last_price'),
-                       'average_price': ('real(15,5)', 'average_traded_price'),
-                       'total_buy_qty': ('integer', 'total_buy_quantity'),
-                       'total_sell_qty': ('integer', 'total_sell_quantity'),
-                       'traded_volume': ('integer', 'volume_traded')}
+        exchange = exchange.upper()
+        column_dict = None
 
-        if not nse:
-            nfo_column_dict = column_dict
-            nfo_column_dict.update({'open_interest': ('integer', 'oi')})
+        if exchange == 'NSE':
 
-            return nfo_column_dict
+            column_dict = {'time_stamp': ('datetime primary key', 'exchange_timestamp'),
+                           'price': ('real(15,5)', 'last_price'),
+                           'average_price': ('real(15,5)', 'average_traded_price'),
+                           'total_buy_qty': ('integer', 'total_buy_quantity'),
+                           'total_sell_qty': ('integer', 'total_sell_quantity'),
+                           'traded_volume': ('integer', 'volume_traded')}
+
+        elif exchange == 'NFO':
+
+            column_dict = {'time_stamp': ('datetime primary key', 'exchange_timestamp'),
+                           'price': ('real(15,5)', 'last_price'),
+                           'average_price': ('real(15,5)', 'average_traded_price'),
+                           'total_buy_qty': ('integer', 'total_buy_quantity'),
+                           'total_sell_qty': ('integer', 'total_sell_quantity'),
+                           'traded_volume': ('integer', 'volume_traded'),
+                           'open_interest': ('integer', 'oi')}
+
+        elif exchange == 'INDEX':
+
+            column_dict = {'time_stamp': ('datetime primary key', 'exchange_timestamp'),
+                           'price': ('real(15,5)', 'last_price')}
 
         return column_dict
 
-    def __get_tokens(self, nse: bool) -> list:
+    def __get_tokens(self, exchange: str) -> list:
         """Fetch token numbers for instruments NSE, NFO.
 
         Args:
-            nse: If True, fetch token numbers for NSE instruments.
+            exchange: 'NSE', fetch token numbers for NSE instruments.
 
         Returns:
             A list of token numbers.
         """
 
+        # Parameters
+        exchange = exchange.upper()
+        table_model = None
+
         # Get a database session.
         db = SessionLocalTokens()
 
-        # Get the token table name.
-        token_table_name = tables.NseTokenTable if nse else tables.NfoTokenTable
+        # Get the token table.
+        if exchange == 'NSE':
+            table_model = tables.NseTokenTable
+        elif exchange == 'NFO':
+            table_model = tables.NseTokenTable
+        elif exchange == 'INDEX':
+            table_model = tables.IndexTokenTable
 
         # Query the database for token numbers.
-        tokens_data = db.query(token_table_name).filter(token_table_name.last_update == self.today)
+        tokens_data = db.query(table_model).filter(table_model.last_update == self.today)
 
         # Convert the query results to a list of token numbers.
-        tokens = [item.instrument_token for item in tokens_data]
+        tokens_ = [item.instrument_token for item in tokens_data]
 
         # Return the list of token numbers.
-        return tokens
+        return tokens_
 
     @staticmethod
-    def tcp_connection(_tokens: list, function: object, end: str):
+    def tcp_connection(_tokens: list, function: object, end: str, exchange: str):
 
         # Create a KiteTicker object with the api_key and access_token.
         kws = KiteTicker(log.api_key, log.access_token)
@@ -123,7 +148,7 @@ class TickData:
 
         # Start the websocket connection and subscribe to the list of instruments.
         kws.connect(threaded=True)
-        print('recording')
+        print(f'{exchange}: recording started')
 
         # Infinite loop on the main thread. Nothing after this will run.
         while True:
@@ -142,15 +167,33 @@ class TickData:
                 time.sleep(time_diff + 1)
 
         # Print a message to indicate that the program has stopped.
-        print(f"program stopped at {current_time}")
+        print(f"{exchange}: recording stopped at {current_time}")
 
-    def record(self, exchange: str, token_list: list, column_dict: dict):
+    def record(self, exchange: str):
 
         # Initialise some parameters
         selection = exchange.upper()
         end_time_str = f"{self.today} 15:31:00"
 
-        folder = self.nse_path if selection == "NSE" else self.nfo_path
+        folder = None
+        column_dict = None
+        tokens_ = None
+
+        if selection == 'NSE':
+            folder = self.nse_path
+            column_dict = self.nse_column
+            tokens_ = self.nse_tokens
+
+        elif selection == 'NFO':
+            folder = self.nfo_path
+            column_dict = self.nfo_column
+            tokens_ = self.nfo_tokens
+
+        elif selection == 'INDEX':
+            folder = self.index_path
+            column_dict = self.index_column
+            tokens_ = self.index_tokens
+
         path = folder + f"/{today}.db"
 
         os.makedirs(folder, exist_ok=True)
@@ -158,20 +201,15 @@ class TickData:
         # Initiate the SQL server.
         server = Sqlite3Server(path, column_dict)
 
-        # Fetch the tokens from the list of symbols.
-        tokens = token_list
-
         # Create the tables in the SQLite database.
-        server.create_tables(tokens)
+        server.create_tables(tokens_)
 
         # Establish a TCP connection with the API.
-        self.tcp_connection(tokens, server.insert_ticks, end_time_str)
+        self.tcp_connection(tokens_, server.insert_ticks, end_time_str, exchange)
 
 
 if __name__ == '__main__':
-
     tick = TickData()
     tokens = [256265, 257801, 260105]
-    date = "2023-05-29 10:37:00"
-    tick.tcp_connection(tokens, print, date)
-
+    date = "2023-06-01 23:43:00"
+    tick.tcp_connection(tokens, print, date, 'INDEX')

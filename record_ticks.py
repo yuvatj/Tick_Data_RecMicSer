@@ -5,11 +5,11 @@ tick = TickData()
 
 
 def record_nse():
-    tick.record('NSE', tick.nse_tokens, tick.nse_column)
+    tick.record('NSE')
 
 
 def record_nfo():
-    tick.record('NFO', tick.nfo_tokens, tick.nfo_column)
+    tick.record('NFO')
 
 
 if __name__ == '__main__':

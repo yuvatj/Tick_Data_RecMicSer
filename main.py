@@ -1,31 +1,36 @@
 # Python Standard Library
 import json
-from datetime import datetime
-from dataclasses import dataclass, asdict
+import time
+import datetime
+from dataclasses import asdict
+from kiteconnect import KiteConnect
 
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.inspection import inspect
-from sqlalchemy import Column, Integer, DateTime, Float
+from sqlalchemy import Column, Integer, String, Date, DateTime, Float, MetaData, JSON
 from sqlalchemy.orm.exc import NoResultFound
-
 
 # Local Library imports
 import models
 import tables
 from utility import Utility
 from kite_websocket import TickData
+from kite_login import LoginCredentials
 from active_symbols import ActiveSymbols
 from token_app.preset import predefined_requests
-from database import Base, SessionLocalTokens
+from database import Base, SessionLocalTokens, engine_tokens
 from database import engine_candle_data_nse, engine_candle_data_nfo, engine_candle_data_index
 
 # Parameters
 ut = Utility()
 tick = TickData()
+user = LoginCredentials()
 activeSymbols = ActiveSymbols()
-today = datetime.today().date()
+today = datetime.datetime.today().date()
 token_db = SessionLocalTokens()
+
+log = user.credentials
 
 
 def add_token(model: models.NfoTokenModel | models.NseTokenModel | models.IndexTokenModel):
@@ -63,7 +68,7 @@ def add_token(model: models.NfoTokenModel | models.NseTokenModel | models.IndexT
         if 'Duplicate entry' in str(e):
             # If the model's exchange is NFO, update the existing NfoTable object
             if model.exchange == 'NFO':
-                existing_token = db.query(tables.NfoTokenTable)\
+                existing_token = db.query(tables.NfoTokenTable) \
                     .filter(tables.NfoTokenTable.instrument_token == model.instrument_token).first()
 
                 # Update the values of the existing token
@@ -88,7 +93,9 @@ def add_token(model: models.NfoTokenModel | models.NseTokenModel | models.IndexT
                 # Update the values of the existing token
                 existing_token.name = model.name
                 existing_token.trading_symbol = model.tradingsymbol
-                existing_token.lot_size = model.lot_size
+                existing_token.bank_nifty = model.bank_nifty
+                existing_token.nifty = model.nifty
+                existing_token.fin_nifty = model.fin_nifty
                 existing_token.last_update = model.last_update
 
                 # Add the updated token to the database
@@ -146,17 +153,19 @@ def get_tokens(exchange: str) -> list:
     # Convert the query results to a list of token numbers.
     result = [item.instrument_token for item in tokens_data]
 
+    # Close tokens_db
+    token_db.close()
+
     # Return the list of token numbers.
     return result
 
 
 def create_table_for_instruments(exchange: str):
-
     # Parameters
     _engine_ = None
-    _tokens_ = None                 # [256265, 257801, 260105]
-    _token_names = None             # ['token_256265', 'token_257801', 'token_260105']
-    exchange = exchange.upper()     # 'NSE', 'NFO', 'INDEX'
+    _tokens_ = None  # [256265, 257801, 260105]
+    _token_names = None  # ['token_256265', 'token_257801', 'token_260105']
+    exchange = exchange.upper()  # 'NSE', 'NFO', 'INDEX'
 
     if exchange == 'NSE':
         _tokens_ = get_tokens('NSE')
@@ -192,10 +201,17 @@ def create_table_for_instruments(exchange: str):
                     high = Column(Float)
                     low = Column(Float)
                     close = Column(Float)
-                    volume = Column(Integer)
+                    volume_long = Column(Integer)
+                    volume_short = Column(Integer)
                     net_long = Column(Float)
                     net_short = Column(Float)
-                    per_trade_value = Column(Float)
+                    per_trade = Column(Float)
+                    wa_long = Column(Float)
+                    wa_short = Column(Float)
+                    vwap = Column(Float)
+                    quality = Column(Integer)
+                    liquidity_profile = Column(JSON)
+                    volume_profile = Column(JSON)
 
                 # Create the table in the database
                 tables_list.append(NseInstrumentTable.__table__)
@@ -210,11 +226,20 @@ def create_table_for_instruments(exchange: str):
                     high = Column(Float)
                     low = Column(Float)
                     close = Column(Float)
-                    volume = Column(Integer)
+                    volume_long = Column(Integer)
+                    volume_short = Column(Integer)
                     net_long = Column(Float)
                     net_short = Column(Float)
-                    per_trade_value = Column(Float)
+                    per_trade = Column(Float)
+                    wa_long = Column(Float)
+                    wa_short = Column(Float)
+                    vwap = Column(Float)
+                    total_value = Column(Float)
+                    value_today = Column(Float)
                     open_interest = Column(Integer)
+                    quality = Column(Integer)
+                    liquidity_profile = Column(JSON)
+                    volume_profile = Column(JSON)
 
                 # Create the table in the database
                 tables_list.append(NfoInstrumentTable.__table__)
@@ -241,91 +266,142 @@ def create_table_for_instruments(exchange: str):
         print(f'Table for token {table.name} created')
 
 
-def get_index_stocks():
-    index_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
-    stock_list = []
+def add_index_weightage(model: models.NseTokenModel):
+    """ This function is capable of handling missing symbols of indexes and assigning weightage values """
 
-    for item in index_list:
+    # Parameters
+    index_instruments = ['BANKNIFTY', 'NIFTY', 'FINNIFTY']
+    model_symbols = {item.tradingsymbol for item in model}  # Use set for faster membership checking
+
+    for index_symbol in index_instruments:
+
+        stock_list = []
         try:
-            with open(f"{item}.json", "r") as json_file:
+            with open(f"{index_symbol}.json", "r") as json_file:
                 data = json.load(json_file)
-                symbol_count = len(data)
 
-                # Create a model to fetch data for NSE symbols
-                nse_model = predefined_requests("token_NSE_ALL")
-                nse_model.name = tuple(data.keys())
-                nse_tokens = activeSymbols.get_symbol_data(nse_model)
-                token = [item.tradingsymbol for item in nse_tokens]
+                stock_list.extend(data.keys())
 
-                if len(token) == symbol_count:
-                    # Append the keys to stock_list
-                    stock_list.extend(data.keys())
-                else:
-                    # Raise an exception if the number of symbols fetched does not match the expected count
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"File not found at the {index_symbol}.json location") from e
 
-                    # Convert the lists to sets
-                    set1 = set(token)
-                    set2 = set(data.keys())
+        missing_symbols = [item for item in stock_list if item not in model_symbols]
 
-                    # Get the items that are present in set1 but not in set2
-                    unique_items = set2 - set1
+        if missing_symbols:
+            raise ValueError(f"Missing items from {index_symbol}: {missing_symbols}")
 
-                    # Convert the result back to a list
-                    result = list(unique_items)
-                    raise NameError(f"{item}.json Stocks {result} do not match")
+        for nse_model in model:
+            if nse_model.tradingsymbol in stock_list:
+                # Use a dictionary to map index symbols to corresponding attributes
+                index_attributes = {
+                    'BANKNIFTY': 'bank_nifty',
+                    'NIFTY': 'nifty',
+                    'FINNIFTY': 'fin_nifty'
+                }
 
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File not found at the {item}.json location")
+                setattr(nse_model, index_attributes[index_symbol], data[nse_model.tradingsymbol])
 
-    # Get the unique stocks by converting the list to a set and then back to a list
-    unique_stocks = list(set(stock_list))
-    return unique_stocks
+    return model
+
+
+def round_to_nearest_multiple(number, multiple):
+    return round(number / multiple) * multiple
+
+
+def get_index_premarket_price():
+
+    kite = KiteConnect(api_key=log.api_key)
+    kite.set_access_token(log.access_token)
+
+    # List of instrument tokens for the indices
+    instrument_tokens = ['NSE:NIFTY 50', 'NSE:NIFTY BANK', 'NSE:NIFTY FIN SERVICE']
+
+    # Get quotes for the indices
+    quotes = kite.quote(instrument_tokens)
+
+    # Extract required information from quotes
+    index_quotes = {}
+    for token in instrument_tokens:
+        index_quotes[token] = {
+            "last_price": quotes[token]["last_price"],
+            "close": quotes[token]["ohlc"]["close"]
+        }
+
+    return index_quotes
 
 
 def preprocessing():
 
-    decision = False # keep it False
+    decision = False  # keep it False
+    counter = 0
+    max_attempts = 5
+
     while decision is False:
 
-        # Create a model to fetch data for NSE symbols
-        nse_model = predefined_requests("token_NSE_ALL")
-        # Add list of NSE stocks to name
-        nse_stocks = tuple(activeSymbols.get_symbol_data(predefined_requests("stocks_NFO")))
-        index_stocks = tuple(get_index_stocks())
+        time.sleep(5)  # Sleep for 10 seconds before the next attempt
 
-        combined_stocks = nse_stocks + index_stocks
-        unique_stocks = tuple(set(combined_stocks))
+        counter += 1
 
-        nse_model.name = unique_stocks
-        nse_tokens = activeSymbols.get_symbol_data(nse_model)
-
-        # Fetch data for Futures NIFTY and BANKNIFTY
-        futures_model = predefined_requests('futures_NI_BN')
-        fut_tokens = activeSymbols.get_symbol_data(futures_model)
-
-        # Fetch data for Options for BANKNIFTY
-        options_model = predefined_requests('options_BN')
-        # Take input for BANKNIFTY spot pre-open price
-        options_model.strike = int(input("Enter BANKNIFTY spot pre-open price example: 44_200: "))
-        banknifty_opt_tokens = activeSymbols.get_symbol_data(options_model)
+        print("Tokens data preprocessing started")
 
         # Fetch data for INDEX symbols
         symbol_model = predefined_requests("INDEX")
         index_tokens = activeSymbols.get_symbol_data(symbol_model)
 
+        # Fetch data for Futures NIFTY and BANKNIFTY
+        futures_model = predefined_requests('futures_NI_BN')
+        fut_tokens = activeSymbols.get_symbol_data(futures_model)
+
+        # Create a model to fetch data for NSE symbols
+        nse_symbol_model = predefined_requests("token_NSE_ALL")
+        # Add list of NSE stocks to name
+        nse_stocks = tuple(activeSymbols.get_symbol_data(predefined_requests("stocks_NFO")))
+        nse_symbol_model.name = nse_stocks
+        nse_model = activeSymbols.get_symbol_data(nse_symbol_model)
+        nse_tokens = add_index_weightage(nse_model)
+
+        # Get the current time.
+        time_live = datetime.datetime.now().time().replace(microsecond=0)
+
+        start_time = datetime.datetime.combine(datetime.date.today(), datetime.time(9, 10))
+
+        # Calculate the delay until the start time
+        if time_live < start_time.time():
+            time_diff = (start_time - datetime.datetime.today()).seconds
+            print(f"Waiting {time_diff} seconds.")
+            time.sleep(time_diff + 1)
+
+        # Fetch data for Options for BANKNIFTY
+        options_model = predefined_requests('options_BN')
+        banknifty_last_price = get_index_premarket_price()['NSE:NIFTY BANK']['last_price']
+        options_model.strike = round_to_nearest_multiple(banknifty_last_price, 100)
+        banknifty_opt_tokens = activeSymbols.get_symbol_data(options_model)
+
+        print(f"Bank Nifty ltp: {banknifty_last_price}")
+
         # Merge all tokens into a single list
         tokens_combined = nse_tokens + fut_tokens + banknifty_opt_tokens + index_tokens
+
+        index = len(index_tokens) == 3
+        futures = len(fut_tokens) == 6
+        fno_stocks = len(nse_tokens) > 170
+        options = len(banknifty_opt_tokens) == 62
+
+        requirements = [index, futures, fno_stocks, options]
 
         # Print the number of symbols for Futures, Options, and Stocks
         print(f"Futures:{len(fut_tokens)}\nOptions:{len(banknifty_opt_tokens)}\n"
               f"Stocks:{len(nse_tokens)}\nIndex:{len(index_tokens)}")
 
-        decision = True if input("Press 'Y' to continue or 'N' to redo: ").upper() == 'Y' else False
+        if all(requirements):
+            decision = True
 
-        if decision:
             # add the tokens to the database
             for token_item in tokens_combined:
                 add_token(token_item)
+
+        if counter >= max_attempts:
+            raise ValueError("Failed to fetch required data after multiple attempts.")
 
     # Create missing tables of NSE
     create_table_for_instruments(exchange='NSE')
@@ -338,4 +414,17 @@ def preprocessing():
 
 
 if __name__ == '__main__':
+    # Use this to create missing tables daily
     preprocessing()
+
+    # This function will delete "index_stocks_tokens" table in tokens database
+    # and recreates the table with new data. Use only you update the index.json files
+    # create_index_stocks()
+
+
+
+
+
+
+
+

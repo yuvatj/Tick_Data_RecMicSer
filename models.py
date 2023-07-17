@@ -57,8 +57,10 @@ class NfoTokenModel:
 class NseTokenModel:
     instrument_token: int = field(default=None)
     tradingsymbol: str = field(default=None)
-    lot_size: int = field(default=None)
     name: str = field(default=None)
+    bank_nifty: float = field(default=0.0)
+    nifty: float = field(default=0.0)
+    fin_nifty: float = field(default=0.0)
     last_update: date = field(default=today)
     exchange: str = field(default='NSE')
 
