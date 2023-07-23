@@ -18,6 +18,7 @@ class NfoTokenTable(Base):
     strike = Column(Integer)
     segment = Column(String(50))
     instrument_type = Column(String(50))
+    position = Column(Integer, default=0)
     last_update = Column(Date)
 
 

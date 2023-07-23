@@ -29,8 +29,8 @@ class TickData:
         self.nfo_column = self.__get_column('NFO')
         self.index_column = self.__get_column('INDEX')
 
-        self.nse_path = "NSE_ticks"
-        self.nfo_path = "NFO_ticks"
+        self.nse_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NSE'  #"NSE_ticks"
+        self.nfo_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NFO'  #"NFO_ticks"
         self.index_path = "INDEX_ticks"
 
     @staticmethod
@@ -46,7 +46,7 @@ class TickData:
                            'average_price': ('real(15,5)', 'average_traded_price'),
                            'total_buy_qty': ('integer', 'total_buy_quantity'),
                            'total_sell_qty': ('integer', 'total_sell_quantity'),
-                           'traded_volume': ('integer', 'volume_traded')}
+                           'volume': ('integer', 'volume_traded')}
 
         elif exchange == 'NFO':
 
@@ -55,7 +55,7 @@ class TickData:
                            'average_price': ('real(15,5)', 'average_traded_price'),
                            'total_buy_qty': ('integer', 'total_buy_quantity'),
                            'total_sell_qty': ('integer', 'total_sell_quantity'),
-                           'traded_volume': ('integer', 'volume_traded'),
+                           'volume': ('integer', 'volume_traded'),
                            'open_interest': ('integer', 'oi')}
 
         elif exchange == 'INDEX':

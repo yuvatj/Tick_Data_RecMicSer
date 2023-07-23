@@ -49,6 +49,7 @@ class NfoTokenModel:
     strike: int = field(default=None)
     segment: str = field(default=None)
     instrument_type: int = field(default=None)
+    position: int = field(default=0)
     last_update: date = field(default=today)
     exchange: str = field(default='NFO')
 
