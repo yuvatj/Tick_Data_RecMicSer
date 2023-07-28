@@ -86,7 +86,7 @@ class TickData:
         if exchange == 'NSE':
             table_model = tables.NseTokenTable
         elif exchange == 'NFO':
-            table_model = tables.NseTokenTable
+            table_model = tables.NfoTokenTable
         elif exchange == 'INDEX':
             table_model = tables.IndexTokenTable
 
@@ -121,30 +121,9 @@ class TickData:
             # Set the mode for the list of instruments to `full`.
             ws.set_mode(ws.MODE_FULL, _tokens)
 
-        # Define a function to handle errors that occur when connecting to the websocket
-        # or when subscribing to instruments.
-        def handle_error(ws, error):
-            # Log the error message.
-            logging.error(error)
-
-            # Close the websocket connection.
-            ws.close()
-
-        # Define a function to log the time when the websocket connects and disconnects,
-        # as well as the list of instruments that are subscribed to.
-        def log_connection_info(ws, event):
-            # Log the time when the websocket connects or disconnects.
-            logging.info(f"{event} at {datetime.now()}")
-
-            # If the event is `connect`, log the list of instruments that are subscribed to.
-            if event == "connect":
-                logging.info(f"Subscribed to {_tokens}")
-
         # Assign the callbacks to the corresponding methods on the KiteTicker class.
         kws.on_ticks = on_ticks
         kws.on_connect = on_connect
-        kws.on_error = handle_error
-        kws.on_log = log_connection_info
 
         # Start the websocket connection and subscribe to the list of instruments.
         kws.connect(threaded=True)

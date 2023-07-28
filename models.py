@@ -27,19 +27,6 @@ class CredentialsModel:
 
 
 @dataclass
-class SymbolsModel:
-    name: Tuple[str, ...] | str
-    columns: Tuple[str, ...] | str
-    exchange: str = field(default=None)
-    segment: str = field(default=None)
-    strike: int = field(default=None)
-    instrument_type: str = field(default=None)
-    expiry: str = field(default=None)
-    strike_multiplier: int = field(default=None)
-    strike_range_per_side: int = field(default=None)
-
-
-@dataclass
 class NfoTokenModel:
     instrument_token: int = field(default=None)
     tradingsymbol: str = field(default=None)

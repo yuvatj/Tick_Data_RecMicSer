@@ -280,13 +280,13 @@ class NfoActiveSymbols(BaseSymbols):
 
         if selection == 'NIFTY':
             atm_strike = self.ltp_NIFTY
-            per_side_strikes = 9
+            per_side_strikes = 5
         elif selection == 'BANKNIFTY':
             atm_strike = self.ltp_BANKNIFTY
-            per_side_strikes = 15
+            per_side_strikes = 12
         elif selection == 'FINNIFTY':
             atm_strike = self.ltp_FINNIFTY
-            per_side_strikes = 9
+            per_side_strikes = 5
 
         strike_multiplier = 100
 
@@ -320,6 +320,10 @@ class NfoActiveSymbols(BaseSymbols):
         return nfo_models
 
     def to_tokens(self):
+
+        # futures = self.futures_Nifty + self.futures_BANKNIFTY + self.futures_FINNIFTY
+        # options = self.options_Nifty + self.options_BANKNIFTY + self.options_FINNIFTY
+
         futures = self.futures_Nifty + self.futures_BANKNIFTY + self.futures_FINNIFTY
         options = self.options_Nifty + self.options_BANKNIFTY + self.options_FINNIFTY
 
@@ -344,11 +348,11 @@ class NseActiveSymbols(BaseSymbols):
         self.__fetch_nse_data_frame()
 
         self.stocks_nfo = self.__get_stocks('NFO')
-        # self.stocks_nse = self.__get_stocks('NSE')
-        #
-        # self.stocks_nifty = self.__get_stocks('NIFTY')
-        # self.stocks_finnifty = self.__get_stocks('FINNIFTY')
-        # self.stocks_banknifty = self.__get_stocks('BANKNIFTY')
+        self.stocks_nse = self.__get_stocks('NSE')
+
+        self.stocks_nifty = self.__get_stocks('NIFTY')
+        self.stocks_finnifty = self.__get_stocks('FINNIFTY')
+        self.stocks_banknifty = self.__get_stocks('BANKNIFTY')
 
     def __fetch_nse_data_frame(self):
         """
@@ -433,7 +437,7 @@ class NseActiveSymbols(BaseSymbols):
 
     def to_tokens(self):
 
-        combined_tokens = self.stocks_nfo
+        combined_tokens = self.stocks_nifty + self.stocks_banknifty + self.stocks_finnifty
 
         # Remove duplicates while maintaining the order using list comprehension
         unique_tokens = [token for index, token in enumerate(combined_tokens) if token not in combined_tokens[:index]]
@@ -448,5 +452,5 @@ if __name__ == "__main__":
     nse_tokens = NseActiveSymbols()
     print(nse_tokens.to_tokens())
 
-    # nfo_tokens = NfoActiveSymbols()
-    # print(nfo_tokens.to_tokens())
+    nfo_tokens = NfoActiveSymbols()
+    print(nfo_tokens.to_tokens())
