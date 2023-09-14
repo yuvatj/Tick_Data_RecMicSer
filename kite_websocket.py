@@ -29,8 +29,12 @@ class TickData:
         self.nfo_column = self.__get_column('NFO')
         self.index_column = self.__get_column('INDEX')
 
-        self.nse_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NSE'  #"NSE_ticks"
-        self.nfo_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NFO'  #"NFO_ticks"
+        self.nse_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NSE'
+        self.nfo_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NFO'
+
+        # self.nse_path = "NSE_ticks"
+        # self.nfo_path = "NFO_ticks"
+
         self.index_path = "INDEX_ticks"
 
     @staticmethod

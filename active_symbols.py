@@ -233,8 +233,10 @@ class NfoActiveSymbols(BaseSymbols):
         ltp_finnifty = index_quotes['NSE:NIFTY FIN SERVICE']['last_price']
 
         self.ltp_NIFTY = round(ltp_nifty / 100) * 100
-        self.ltp_BANKNIFTY = round(ltp_banknifty / 100) * 100
+        # self.ltp_BANKNIFTY = round(ltp_banknifty / 100) * 100
         self.ltp_FINNIFTY = round(ltp_finnifty / 100) * 100
+
+        self.ltp_BANKNIFTY = 46000
 
     def __get_futures(self, selection: str):
         # Define the trigger limit (number of days before the expiry date to trigger an action)
@@ -314,10 +316,12 @@ class NfoActiveSymbols(BaseSymbols):
         # Calculate the distance from the neutral strike and convert it to integer type
         data_frame['position'] = ((data_frame['strike'] - atm_strike) / strike_multiplier).astype(int)
 
-        # Convert DataFrame rows to StockData data class objects and store them in a list
-        nfo_models = [models.NfoTokenModel(**row.to_dict()) for _, row in data_frame.iterrows()]
+        # # Convert DataFrame rows to StockData data class objects and store them in a list
+        # nfo_models = [models.NfoTokenModel(**row.to_dict()) for _, row in data_frame.iterrows()]
 
-        return nfo_models
+        data_frame = data_frame[data_frame['instrument_type'] == 'PE']
+
+        return data_frame # nfo_models
 
     def to_tokens(self):
 
@@ -447,10 +451,61 @@ class NseActiveSymbols(BaseSymbols):
         return unique_tokens
 
 
+class IndexActiveSymbols(BaseSymbols):
+    def __init__(self):
+        super().__init__('NSE')
+
+        self.data_frame = None
+        self.index_tokens = None
+        self.index_list = ['NIFTY 50', 'NIFTY BANK', 'NIFTY FIN SERVICE']
+        # self.index_list = ['NIFTY 50', 'NIFTY BANK', 'NIFTY FIN SERVICE', 'NIFTY MID SELECT']
+
+        # Initiate some functions to load data
+        self.__fetch_dataframe()
+        self.__fetch_tokens()
+
+    def __fetch_dataframe(self):
+
+        data_frame = self.nse_data_frame.copy()
+
+        data_frame = data_frame[data_frame['segment'] == 'INDICES']
+
+        condition = ['instrument_token', 'tradingsymbol', 'name']
+
+        self.data_frame = data_frame[condition]
+
+    def __fetch_tokens(self):
+
+        data_frame = self.data_frame
+        model_list = []
+
+        # Convert DataFrame rows to StockData data class objects and store them in a list
+        index_models = [models.IndexTokenModel(**row.to_dict()) for _, row in data_frame.iterrows()
+                        if row['tradingsymbol'] in self.index_list]
+
+        self.index_tokens = index_models
+
+    def to_tokens(self):
+
+        combined_tokens = self.index_tokens
+
+        # Remove duplicates while maintaining the order using list comprehension
+        unique_tokens = [token for index, token in enumerate(combined_tokens) if token not in combined_tokens[:index]]
+
+        print(f"Index derivatives {len(unique_tokens)} downloaded")
+
+        return unique_tokens
+
+
 if __name__ == "__main__":
 
-    nse_tokens = NseActiveSymbols()
-    print(nse_tokens.to_tokens())
+    # nse_tokens = NseActiveSymbols()
+    # print(nse_tokens.to_tokens())
 
     nfo_tokens = NfoActiveSymbols()
-    print(nfo_tokens.to_tokens())
+    # print(nfo_tokens.to_tokens())
+
+    print(nfo_tokens.options_BANKNIFTY)
+
+    # index_tokens = IndexActiveSymbols()
+    # print(index_tokens.to_tokens())
