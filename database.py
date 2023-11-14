@@ -4,13 +4,10 @@ from sqlalchemy.orm import declarative_base
 
 
 # Local Library imports
-import utility
 from kite_login import LoginCredentials
 
 # Parameters
-ut = utility.Utility()
-login = LoginCredentials()
-log = login.credentials
+log = LoginCredentials()
 
 # Configuration for the tokens database
 DATABASE_URL_TOKENS = f"mysql+pymysql://{log.mysql_username}:{log.mysql_password}@127.0.0.1:3306/tokens"

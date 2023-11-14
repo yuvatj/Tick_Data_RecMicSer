@@ -10,8 +10,8 @@ today = datetime.today().date()
 class NfoTokenTable(Base):
     __tablename__ = 'nfo_tokens'
 
-    instrument_token = Column(Integer, primary_key=True, index=True)
-    tradingsymbol = Column(String(50))
+    instrument_token = Column(Integer, index=True)
+    tradingsymbol = Column(String(50), primary_key=True)
     lot_size = Column(Integer)
     name = Column(String(50))
     expiry = Column(Date)

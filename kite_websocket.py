@@ -1,7 +1,7 @@
 # STD library
 import os
 import time
-import logging
+import json
 from datetime import datetime
 from kiteconnect import KiteTicker
 
@@ -12,9 +12,8 @@ from sqllite_local import Sqlite3Server
 from database import SessionLocalTokens
 
 # Parameters
-log = LoginCredentials().credentials
+log = LoginCredentials()
 today = datetime.today().date()
-logging.basicConfig(level=logging.DEBUG)
 
 
 class TickData:
@@ -31,11 +30,18 @@ class TickData:
 
         self.nse_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NSE'
         self.nfo_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NFO'
+        self.index_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/INDEX'
 
-        # self.nse_path = "NSE_ticks"
-        # self.nfo_path = "NFO_ticks"
+        self.nse_txt_file = "nse_ticks_.txt"
+        self.nfo_txt_file = "nfo_ticks_.txt"
+        self.index_txt_file = 'index_ticks_.txt'
 
-        self.index_path = "INDEX_ticks"
+    # Custom JSON encoder to handle datetime objects
+    class DateTimeEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, datetime):
+                return obj.strftime('%Y-%m-%d %H:%M:%S')
+            return super().default(obj)
 
     @staticmethod
     def __get_column(exchange: str):
@@ -152,6 +158,61 @@ class TickData:
         # Print a message to indicate that the program has stopped.
         print(f"{exchange}: recording stopped at {current_time}")
 
+    def tcp_connection_beta(self, _tokens: list, file_path: str, end: str, exchange: str):
+
+        # Create a KiteTicker object with the api_key and access_token.
+        kws = KiteTicker(log.api_key, log.access_token)
+
+        # Convert the end date time string to a datetime object.
+        end_time = datetime.strptime(end, "%Y-%m-%d %H:%M:%S")
+
+        # Open a text file for writing tick data
+        with open(file_path, "w") as file:
+
+            # Define a callback function to be called when the websocket receives a tick message.
+            def on_ticks(ws, ticks):
+                for tick in ticks:
+                    # Serialize the tick data to JSON using the custom encoder
+                    tick_json = json.dumps(tick, cls=self.DateTimeEncoder)
+
+                    # Write the JSON data to the file
+                    file.write(tick_json + "\n")
+
+            # Define a callback function to be called when the websocket connects to the Kite Connect server.
+            def on_connect(ws, response):
+                # Subscribe to the list of instruments passed in to the tcp_connection() method.
+                ws.subscribe(_tokens)
+
+                # Set the mode for the list of instruments to `full`.
+                ws.set_mode(ws.MODE_FULL, _tokens)
+
+            # Assign the callbacks to the corresponding methods on the KiteTicker class.
+            kws.on_ticks = on_ticks
+            kws.on_connect = on_connect
+
+            # Start the websocket connection and subscribe to the list of instruments.
+            kws.connect(threaded=True)
+            print(f'{exchange}: recording started')
+
+            # Infinite loop on the main thread. Nothing after this will run.
+            while True:
+                # Get the current time.
+                current_time = datetime.now().time().replace(microsecond=0)
+
+                # If the current time is greater than or equal to the end time,
+                # close the websocket connection and break out of the loop.
+                if current_time >= end_time.time():
+                    kws.close()
+                    break
+
+                # Otherwise, sleep for the difference between the current time and the end time.
+                else:
+                    time_diff = (end_time - datetime.today()).seconds
+                    time.sleep(time_diff + 1)
+
+            # Print a message to indicate that the program has stopped.
+            print(f"{exchange}: recording stopped at {current_time}")
+
     def record(self, exchange: str):
 
         # Initialise some parameters
@@ -190,9 +251,32 @@ class TickData:
         # Establish a TCP connection with the API.
         self.tcp_connection(tokens_, server.insert_ticks, end_time_str, exchange)
 
+    def record_beta(self, exchange: str):
+
+        end_time_str = f"{self.today} 15:31:00"
+
+        file_mapping = {
+            "NSE": (self.nse_txt_file, self.nse_tokens),
+            "NFO": (self.nfo_txt_file, self.nfo_tokens),
+            "INDEX": (self.index_txt_file, self.index_tokens)
+        }
+
+        file_name = file_mapping.get(exchange)[0]
+        tokens_ = file_mapping.get(exchange)[1]
+
+        # Establish a TCP connection with the API.
+        self.tcp_connection_beta(tokens_, file_name, end_time_str, exchange)
+
 
 if __name__ == '__main__':
     tick = TickData()
+
     tokens = [256265, 257801, 260105]
-    date = "2023-06-01 23:43:00"
+    date = "2023-11-14 15:30:00"
     tick.tcp_connection(tokens, print, date, 'INDEX')
+
+    # tokens = [341249, 1270529, 1510401]
+    # date = "2023-10-30 15:30:00"
+    # tick.tcp_connection_beta(tokens, "tick_data.txt", date, 'NSE')
+
+    # tick.record_beta('NSE')

@@ -16,8 +16,7 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', None)
 
 # Parameters
-user = LoginCredentials()
-log = user.credentials
+log = LoginCredentials()
 ut = Utility()
 
 
@@ -233,10 +232,10 @@ class NfoActiveSymbols(BaseSymbols):
         ltp_finnifty = index_quotes['NSE:NIFTY FIN SERVICE']['last_price']
 
         self.ltp_NIFTY = round(ltp_nifty / 100) * 100
-        # self.ltp_BANKNIFTY = round(ltp_banknifty / 100) * 100
+        self.ltp_BANKNIFTY = round(ltp_banknifty / 100) * 100
         self.ltp_FINNIFTY = round(ltp_finnifty / 100) * 100
 
-        self.ltp_BANKNIFTY = 46000
+        # self.ltp_BANKNIFTY = 46000
 
     def __get_futures(self, selection: str):
         # Define the trigger limit (number of days before the expiry date to trigger an action)
@@ -303,6 +302,9 @@ class NfoActiveSymbols(BaseSymbols):
         # Filter the DataFrame to include only rows with the specified 'name' and 'segment'
         data_frame = data_frame[(data_frame['name'] == selection) & (data_frame['segment'] == 'NFO-OPT')]
 
+        # Filter the DataFrame to include only rows for expiry dates greater than or equal to today's date
+        data_frame = data_frame[data_frame['expiry'] >= self.date]
+
         # Filter the DataFrame to include only rows for the nearest expiry date and strike divisible by 100
         data_frame = data_frame[
             (data_frame['expiry'] == data_frame['expiry'].min()) & (data_frame['strike'] % 100 == 0)]
@@ -316,12 +318,10 @@ class NfoActiveSymbols(BaseSymbols):
         # Calculate the distance from the neutral strike and convert it to integer type
         data_frame['position'] = ((data_frame['strike'] - atm_strike) / strike_multiplier).astype(int)
 
-        # # Convert DataFrame rows to StockData data class objects and store them in a list
-        # nfo_models = [models.NfoTokenModel(**row.to_dict()) for _, row in data_frame.iterrows()]
+        # Convert DataFrame rows to StockData data class objects and store them in a list
+        nfo_models = [models.NfoTokenModel(**row.to_dict()) for _, row in data_frame.iterrows()]
 
-        data_frame = data_frame[data_frame['instrument_type'] == 'PE']
-
-        return data_frame # nfo_models
+        return nfo_models
 
     def to_tokens(self):
 
@@ -499,13 +499,13 @@ class IndexActiveSymbols(BaseSymbols):
 
 if __name__ == "__main__":
 
-    # nse_tokens = NseActiveSymbols()
-    # print(nse_tokens.to_tokens())
+    nse_tokens = NseActiveSymbols()
+    print(nse_tokens.to_tokens())
 
     nfo_tokens = NfoActiveSymbols()
-    # print(nfo_tokens.to_tokens())
+    print(nfo_tokens.to_tokens())
 
-    print(nfo_tokens.options_BANKNIFTY)
+    # print(nfo_tokens.options_BANKNIFTY)
 
-    # index_tokens = IndexActiveSymbols()
-    # print(index_tokens.to_tokens())
+    index_tokens = IndexActiveSymbols()
+    print(index_tokens.to_tokens())

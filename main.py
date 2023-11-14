@@ -1,5 +1,5 @@
+
 # Python Standard Library
-import json
 import time
 import datetime
 from dataclasses import asdict
@@ -15,7 +15,6 @@ import models
 import tables
 from utility import Utility
 from kite_websocket import TickData
-from kite_login import LoginCredentials
 from active_symbols import NseActiveSymbols, NfoActiveSymbols, IndexActiveSymbols
 from database import Base, SessionLocalTokens, engine_day_data_index, engine_candle_data_index
 from database import engine_candle_data_nse, engine_candle_data_nfo, engine_day_data_nse, engine_day_data_nfo
@@ -23,11 +22,8 @@ from database import engine_candle_data_nse, engine_candle_data_nfo, engine_day_
 # Parameters
 ut = Utility()
 tick = TickData()
-user = LoginCredentials()
 today = datetime.datetime.today().date()
 token_db = SessionLocalTokens()
-
-log = user.credentials
 
 
 def add_token(model: models.NfoTokenModel | models.NseTokenModel | models.IndexTokenModel):
@@ -66,7 +62,7 @@ def add_token(model: models.NfoTokenModel | models.NseTokenModel | models.IndexT
             # If the model's exchange is NFO, update the existing NfoTable object
             if model.exchange == 'NFO':
                 existing_token = db.query(tables.NfoTokenTable) \
-                    .filter(tables.NfoTokenTable.instrument_token == model.instrument_token).first()
+                    .filter(tables.NfoTokenTable.tradingsymbol == model.tradingsymbol).first()
 
                 # Update the values of the existing token
                 existing_token.name = model.name
@@ -241,10 +237,11 @@ def create_table_in_candle_data_db(exchange: str):
                     high = Column(Float)
                     low = Column(Float)
                     close = Column(Float)
+                    candle_data = Column(JSON)
                     cash_profile = Column(JSON)
                     future_profile = Column(JSON)
                     option_profile = Column(JSON)
-                    candle_data = Column(JSON)
+                    option_strike_data = Column(JSON)
 
                 # Create the table in the database
                 tables_list.append(IndexInstrumentTable.__table__)
@@ -339,10 +336,11 @@ def create_table_in_day_data_db(exchange: str):
                     high = Column(Float)
                     low = Column(Float)
                     close = Column(Float)
+                    candle_data = Column(JSON)
                     cash_profile = Column(JSON)
                     future_profile = Column(JSON)
                     option_profile = Column(JSON)
-                    candle_data = Column(JSON)
+                    option_strike_data = Column(JSON)
 
                 # Create the table in the database
                 tables_list.append(IndexInstrumentTable.__table__)
@@ -356,6 +354,7 @@ def create_table_in_day_data_db(exchange: str):
 
 
 def preprocessing():
+
     print("Tokens data preprocessing started")
 
     # Get the current time.
