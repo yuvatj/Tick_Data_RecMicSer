@@ -346,6 +346,6 @@ if __name__ == "__main__":
 
     # user = BaseClass('kite', "WV0236")
     user = KiteUser("WV0236")
-    print(user.access_token)
+    print(user.gen_totp())
 
 

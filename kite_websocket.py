@@ -1,6 +1,7 @@
 # STD library
 import os
 import time
+import pika
 import json
 from datetime import datetime
 from kiteconnect import KiteTicker
@@ -13,13 +14,82 @@ from database import SessionLocalTokens
 
 # Parameters
 log = LoginCredentials()
-today = datetime.today().date()
+
+
+class RabbitMQQueue:
+    def __init__(self, exchange_name, queue_name, host='localhost', username='guest', password='guest'):
+        self.exchange_name = exchange_name
+        self.queue_name = queue_name
+        self.host = host
+        self.credentials = pika.PlainCredentials(username, password)
+        self.connection_params = pika.ConnectionParameters(host=self.host, credentials=self.credentials)
+        self.connection = self.connect()
+
+    def connect(self):
+        try:
+            connection = pika.BlockingConnection(self.connection_params)
+            return connection
+
+        except Exception as e:
+            print(f"Error connecting to RabbitMQ: {e}")
+            return None
+
+    def declare_exchange(self):
+        try:
+            channel = self.connection.channel()
+            channel.exchange_declare(exchange=self.exchange_name, exchange_type='direct')
+            print(f"Exchange '{self.exchange_name}' declared successfully")
+
+        except Exception as e:
+            print(f"Error declaring exchange: {e}")
+
+    def declare_queue(self):
+        try:
+            channel = self.connection.channel()
+            channel.queue_declare(queue=self.queue_name)
+            print(f"Queue '{self.queue_name}' declared successfully")
+
+        except Exception as e:
+            print(f"Error declaring queue: {e}")
+
+    def bind_queue_to_exchange(self):
+        try:
+            channel = self.connection.channel()
+            channel.queue_bind(exchange=self.exchange_name, queue=self.queue_name, routing_key=self.queue_name)
+            print(f"Queue '{self.queue_name}' bound to exchange '{self.exchange_name}'")
+
+        except Exception as e:
+            print(f"Error binding queue to exchange: {e}")
+
+    def publish_message(self, message):
+
+        channel = self.connection.channel()
+        channel.basic_publish(exchange=self.exchange_name, routing_key=self.queue_name, body=message)
+
+        # try:
+        #     channel = self.connection.channel()
+        #     channel.basic_publish(exchange=self.exchange_name, routing_key=self.queue_name, body=message)
+        #
+        # except Exception as e:
+        #     print(f"Error publishing message: {e}")
+
+        # try:
+        #     channel = self.connection.channel()
+        #     channel.basic_publish(exchange=self.exchange_name, routing_key=self.queue_name, body=message)
+        #     # print(f"Message sent to exchange '{self.exchange_name}' with routing key '{self.queue_name}': {message}")
+        # except pika.exceptions.AMQPError as e:
+        #     print(f"Error publishing message: {e}")
+
+    def close_connection(self):
+        if self.connection and not self.connection.is_closed:
+            self.connection.close()
+            print("Connection to RabbitMQ closed")
 
 
 class TickData:
 
     def __init__(self):
-        self.today = today
+        self.today = datetime.today().date()
         self.nse_tokens = self.__get_tokens('NSE')
         self.nfo_tokens = self.__get_tokens('NFO')
         self.index_tokens = self.__get_tokens('INDEX')
@@ -32,9 +102,13 @@ class TickData:
         self.nfo_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/NFO'
         self.index_path = 'E:/Market Analysis/Programs/Deployed/utility/Tick_data/INDEX'
 
-        self.nse_txt_file = "nse_ticks_.txt"
-        self.nfo_txt_file = "nfo_ticks_.txt"
-        self.index_txt_file = 'index_ticks_.txt'
+        # self.nse_txt_file = "nse_ticks_.txt"
+        # self.nfo_txt_file = "nfo_ticks_.txt"
+        # self.index_txt_file = 'index_ticks_.txt'
+
+        self.nse_txt_file = f'E:/Market Analysis/Programs/Deployed/utility/Ticks_txt/NSE/{self.today}.txt'
+        self.nfo_txt_file = f'E:/Market Analysis/Programs/Deployed/utility/Ticks_txt/NFO/{self.today}.txt'
+        self.index_txt_file = f'E:/Market Analysis/Programs/Deployed/utility/Ticks_txt/INDEX/{self.today}.txt'
 
     # Custom JSON encoder to handle datetime objects
     class DateTimeEncoder(json.JSONEncoder):
@@ -102,6 +176,7 @@ class TickData:
 
         # Query the database for token numbers.
         tokens_data = db.query(table_model).filter(table_model.last_update == self.today)
+        # tokens_data = db.query(table_model).filter(table_model.last_update == "2023-11-16")
 
         # Convert the query results to a list of token numbers.
         tokens_ = [item.instrument_token for item in tokens_data]
@@ -166,17 +241,56 @@ class TickData:
         # Convert the end date time string to a datetime object.
         end_time = datetime.strptime(end, "%Y-%m-%d %H:%M:%S")
 
+        message_broker = True
+
+        try:
+            # Implementation of rabbit_mq
+            exchange_queue = RabbitMQQueue(exchange, f'{exchange}_queue')
+
+            # Declare exchanges and queues
+            exchange_queue.declare_exchange()
+            exchange_queue.declare_queue()
+            exchange_queue.bind_queue_to_exchange()
+
+        except Exception as e:
+            message_broker = False
+            print(f"Error while connecting to rabbit_mq: {e}")
+
         # Open a text file for writing tick data
-        with open(file_path, "w") as file:
+        with open(file_path, "a") as file:
 
             # Define a callback function to be called when the websocket receives a tick message.
             def on_ticks(ws, ticks):
-                for tick in ticks:
-                    # Serialize the tick data to JSON using the custom encoder
-                    tick_json = json.dumps(tick, cls=self.DateTimeEncoder)
 
-                    # Write the JSON data to the file
-                    file.write(tick_json + "\n")
+                formatted_time = datetime.now().time().strftime("%H:%M:%S.%f")[:-3]
+                final_data = {formatted_time: str(ticks)}
+
+                # Method 01
+                # Serialize the data to JSON and write to the file
+                json.dump(final_data, file)
+
+                # Write a newline character to separate each JSON object
+                file.write('\n')
+
+                # Insert message to rabbit_mq
+                if message_broker:
+                    try:
+                        exchange_queue.publish_message(json.dumps(final_data))
+
+                    except Exception as e:
+                        print(f"Error while connecting to rabbit_mq gg: {e}")
+
+                        print("Retrying to connect")
+
+                        # Implementation of rabbit_mq
+                        exchange_queue_retry = RabbitMQQueue(exchange, f'{exchange}_queue')
+
+                        # Declare exchanges and queues
+                        exchange_queue_retry.declare_exchange()
+                        exchange_queue_retry.declare_queue()
+                        exchange_queue_retry.bind_queue_to_exchange()
+
+                        exchange_queue_retry.publish_message(json.dumps(final_data))
 
             # Define a callback function to be called when the websocket connects to the Kite Connect server.
             def on_connect(ws, response):
@@ -202,7 +316,13 @@ class TickData:
                 # If the current time is greater than or equal to the end time,
                 # close the websocket connection and break out of the loop.
                 if current_time >= end_time.time():
+
+                    # Close connections
+                    exchange_queue.close_connection()
+
+                    # Close kite connection
                     kws.close()
+
                     break
 
                 # Otherwise, sleep for the difference between the current time and the end time.
@@ -212,6 +332,8 @@ class TickData:
 
             # Print a message to indicate that the program has stopped.
             print(f"{exchange}: recording stopped at {current_time}")
+
+
 
     def record(self, exchange: str):
 
@@ -238,7 +360,7 @@ class TickData:
             column_dict = self.index_column
             tokens_ = self.index_tokens
 
-        path = folder + f"/{today}.db"
+        path = folder + f"/{self.today}.db"
 
         os.makedirs(folder, exist_ok=True)
 
@@ -271,12 +393,50 @@ class TickData:
 if __name__ == '__main__':
     tick = TickData()
 
-    tokens = [256265, 257801, 260105]
-    date = "2023-11-14 15:30:00"
-    tick.tcp_connection(tokens, print, date, 'INDEX')
+    nse_tokens = tick.index_tokens
 
-    # tokens = [341249, 1270529, 1510401]
-    # date = "2023-10-30 15:30:00"
-    # tick.tcp_connection_beta(tokens, "tick_data.txt", date, 'NSE')
 
-    # tick.record_beta('NSE')
+    def write_to_txt(data):
+        start_time = time.time()  # Record the start time
+
+        # Specify the file path where you want to write the data
+        file_path = "data_output.txt"  # Replace this with your desired file path
+
+        formatted_time = datetime.now().time().strftime("%H:%M:%S.%f")[:-3]
+
+        final_data = {formatted_time: str(data)}
+
+        # Open the file in write mode ('w')
+        with open(file_path, 'a') as file:
+            # json.dump(final_data, file)
+
+            # Method 02
+            # Serialize the data to JSON
+            tick_json = json.dumps(final_data)
+
+            # Write the JSON data to the file
+            file.write(tick_json + "\n")
+
+        end_time = time.time()  # Record the end time
+
+        # Calculate the time taken in seconds
+        time_taken = end_time - start_time
+
+        print(f"Data written to '{file_path}' in {time_taken:.5f} seconds.")
+
+    # tokens = [256265, 257801, 260105]
+    # date = "2023-11-20 15:30:00"
+    # tick.tcp_connection(tokens, write_to_txt, date, 'INDEX')
+
+    # tokens = nse_tokens
+    # date = "2023-12-18 09:30:00"
+    # tick.tcp_connection(tokens, print, date, 'NFO')
+
+    exchange = 'INDEX'
+    summery_date = "2023-12-18"
+    date_time = "2023-11-20 15:30:00"
+
+    file_path = f'E:/Market Analysis/Programs/Deployed/utility/Ticks_txt/{exchange}/{summery_date}.txt'
+
+    tick.tcp_connection_beta(nse_tokens, file_path, date_time, 'INDEX')
+
